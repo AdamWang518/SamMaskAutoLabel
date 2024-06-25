@@ -107,7 +107,7 @@ ax_button_save = plt.axes([0.81, 0.01, 0.1, 0.075])
 button_save = Button(ax_button_save, 'Save')
 
 def refine_mask(event):
-    global input_points, input_labels, annotated_image, segmented_img_ax, initial_mask, all_points, all_labels, overlay
+    global input_points, input_labels, annotated_image, segmented_img_ax, initial_mask, all_points, all_labels, overlay, mask_info
     if input_points:
         all_points.extend(input_points)  # Add new points to all points
         all_labels.extend(input_labels)  # Add new labels to all labels
@@ -127,7 +127,7 @@ def refine_mask(event):
         final_mask = masks[0]  # Choose the first mask, adjust if needed
 
         # Assign a color to the manual mask and combine it with the initial mask
-        manual_mask_color = get_color(len(np.unique(initial_mask[..., 3])))  # 使用新的颜色
+        manual_mask_color = get_color(len(mask_info))  # 使用新的颜色
         colored_manual_mask = np.zeros_like(image_rgb, dtype=np.uint8)
         for j in range(3):
             colored_manual_mask[final_mask > 0.5, j] = manual_mask_color[j]
@@ -137,6 +137,9 @@ def refine_mask(event):
 
         # 叠加初始遮罩与原图像
         overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
+
+        # Update mask_info with the new mask
+        mask_info.append((len(mask_info), final_mask))
 
         # Update the right image and remove red and blue dots
         ax[1].images[0].set_data(overlay)
@@ -149,7 +152,7 @@ def refine_mask(event):
         input_labels = []
 
 def reset(event):
-    global input_points, input_labels, all_points, all_labels, blue_points, blue_labels, initial_mask, overlay
+    global input_points, input_labels, all_points, all_labels, blue_points, blue_labels, initial_mask, overlay, mask_info
     input_points = []
     input_labels = []
     all_points = []
@@ -157,6 +160,7 @@ def reset(event):
     blue_points = []
     blue_labels = []
     initial_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1], 4), dtype=np.uint8)
+    mask_info = []
 
     for i, result in enumerate(sam_result):
         mask = result['segmentation']
@@ -167,6 +171,8 @@ def reset(event):
         alpha_channel = (mask > 0.5).astype(np.uint8) * color[3]  # Semi-transparent
         colored_mask = np.dstack((colored_mask, alpha_channel))
         initial_mask = np.maximum(initial_mask, colored_mask)
+        
+        mask_info.append((i, mask))
 
     # 叠加初始遮罩与原图像
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
@@ -183,9 +189,15 @@ def cancel_mask(event):
         # Get the first blue point as a reference
         bx, by = blue_points[0]
 
+        # Debugging: Print the coordinates of the blue point
+        print(f"Cancel point: ({bx}, {by})")
+
         # Find the mask that contains the blue point
         for i, mask in mask_info:
             if mask[by, bx]:
+                # Debugging: Print the index of the mask being canceled
+                print(f"Cancelling mask {i}")
+
                 # Remove the mask from initial_mask
                 initial_mask[mask > 0.5] = 0
 
