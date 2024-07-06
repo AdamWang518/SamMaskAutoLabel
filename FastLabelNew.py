@@ -100,12 +100,10 @@ def refine_mask(event):
 
         input_points_np = np.array(all_points)
         input_labels_np = np.array(all_labels)
-        prompt_process.set_image(image_rgb)
-        masks = prompt_process.point_prompt(points=input_points_np, labels=input_labels_np)
+        masks = prompt_process.point_prompt(points=input_points_np, pointlabel=input_labels_np)  # 使用正確的參數
 
         # Optionally annotate and save the final image
         final_mask = masks[0]  # Choose the first mask, adjust if needed
-        final_mask = final_mask.cpu().numpy()  # 將張量從CUDA設備移動到CPU並轉換為NumPy數組
 
         # Assign a color to the manual mask and combine it with the initial mask
         manual_mask_color = get_color(len(mask_info), len(mask_info) + 1)  # 使用新的颜色
