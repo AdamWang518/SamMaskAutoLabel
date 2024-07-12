@@ -175,24 +175,15 @@ def cancel_mask(event):
         bx, by = blue_points[0]
         for i, mask in enumerate(mask_info):
             if mask[by, bx]:
-                # 将要移除的遮罩的区域置零
-                initial_mask[mask > 0.5, :] = 0
+                # Remove the mask from mask_info
                 mask_info.pop(i)
+                # Clear the mask region in initial_mask
+                initial_mask[mask > 0.5] = 0
                 break
 
-        # 重新创建叠加图层
-        initial_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1], 4), dtype=np.uint8)
-        for j, mask in enumerate(mask_info):
-            color = get_color(j, len(mask_info))
-            colored_mask = np.zeros_like(image_rgb, dtype=np.uint8)
-            for k in range(3):
-                colored_mask[mask > 0.5, k] = color[k]
-            alpha_channel = (mask > 0.5).astype(np.uint8) * color[3]
-            colored_mask = np.dstack((colored_mask, alpha_channel))
-            initial_mask = np.maximum(initial_mask, colored_mask)
-
-        overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
-        ax[1].images[0].set_data(overlay)
+        # Update only the necessary parts of the overlay
+        updated_overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
+        ax[1].images[0].set_data(updated_overlay)
         while ax[1].lines:
             ax[1].lines[0].remove()
         fig.canvas.draw()
