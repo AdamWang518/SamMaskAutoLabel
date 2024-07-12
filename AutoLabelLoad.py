@@ -93,8 +93,27 @@ def load_existing_mask(mask_path, image_rgb):
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
     print("Overlay created")  # Debugging line
 
+def update_overlay():
+    global overlay, initial_mask, image_rgb
+    overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
+    ax[1].images[0].set_data(overlay)
+    while ax[1].lines:
+        ax[1].lines[0].remove()
+    fig.canvas.draw()
+
+def clear_all_data():
+    global initial_mask, overlay, mask_info, input_points, input_labels, blue_points, blue_labels
+    initial_mask = None
+    overlay = None
+    mask_info = []
+    input_points = []
+    input_labels = []
+    blue_points = []
+    blue_labels = []
+
 def load_next_image(event):
     global current_image_idx, image_rgb, image_bgr, mask_info, initial_mask, overlay
+    clear_all_data()  # 清空所有相关变量
     current_image_idx = (current_image_idx + 1) % len(image_files)
     image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
     if image_rgb is not None and image_bgr is not None:
@@ -107,6 +126,7 @@ def load_next_image(event):
 
 def load_previous_image(event):
     global current_image_idx, image_rgb, image_bgr, mask_info, initial_mask, overlay
+    clear_all_data()  # 清空所有相关变量
     current_image_idx = (current_image_idx - 1) % len(image_files)
     image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
     if image_rgb is not None and image_bgr is not None:
@@ -142,17 +162,11 @@ def refine_mask(event):
         colored_manual_mask = np.dstack((colored_manual_mask, alpha_channel))
         initial_mask = np.maximum(initial_mask, colored_manual_mask)
 
-        # 叠加初始遮罩与原图像
-        overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
-
         # Update mask_info with the new mask
         mask_info.append(final_mask)
 
-        # Update the right image and remove red and blue dots
-        ax[1].images[0].set_data(overlay)
-        while ax[1].lines:
-            ax[1].lines[0].remove()  # Clear the red and blue dots
-        fig.canvas.draw()
+        # Update the overlay
+        update_overlay()
 
         # Clear input points for next refinement
         input_points = []
@@ -183,12 +197,8 @@ def cancel_mask(event):
                 initial_mask[mask > 0.5] = 0
                 break
 
-        # Only update the necessary parts of the overlay
-        overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
-        ax[1].images[0].set_data(overlay)
-        while ax[1].lines:
-            ax[1].lines[0].remove()
-        fig.canvas.draw()
+        # Update the overlay
+        update_overlay()
         blue_points = []
         blue_labels = []
         print("Mask cancelled")  # Debugging line
