@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Button
-import supervision as sv
 from segment_anything import sam_model_registry, SamAutomaticMaskGenerator, SamPredictor
 
 # Set up paths and device
@@ -69,23 +68,33 @@ def generate_initial_masks(image_rgb):
         alpha_channel = (mask > 0.5).astype(np.uint8) * color[3]  # Semi-transparent
         colored_mask = np.dstack((colored_mask, alpha_channel))
         initial_mask = np.maximum(initial_mask, colored_mask)
-        mask_info.append((i, mask))
+        mask_info.append(mask)
 
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
 
 def load_existing_mask(mask_path, image_rgb):
     global initial_mask, overlay, mask_info
-    initial_mask = np.load(mask_path)
+    with np.load(mask_path) as data:
+        mask_info = [data[key] for key in data]
+    initial_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1], 4), dtype=np.uint8)
+    
+    for i, mask in enumerate(mask_info):
+        color = get_color(i, len(mask_info))
+        colored_mask = np.zeros_like(image_rgb, dtype=np.uint8)
+        for j in range(3):
+            colored_mask[mask > 0.5, j] = color[j]
+        alpha_channel = (mask > 0.5).astype(np.uint8) * color[3]
+        colored_mask = np.dstack((colored_mask, alpha_channel))
+        initial_mask = np.maximum(initial_mask, colored_mask)
+    
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
-    unique_colors = np.unique(initial_mask[:, :, 3])
-    mask_info = [(i, (initial_mask[:, :, 3] == unique_colors[i]).astype(np.uint8)) for i in range(len(unique_colors))]
 
 def load_next_image(event):
     global current_image_idx, image_rgb, image_bgr
     current_image_idx = (current_image_idx + 1) % len(image_files)
     image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
     if image_rgb is not None and image_bgr is not None:
-        mask_path = os.path.join(SAVE_DIR, f"{os.path.splitext(image_files[current_image_idx])[0]}_mask.npy")
+        mask_path = os.path.join(SAVE_DIR, f"{os.path.splitext(image_files[current_image_idx])[0]}_mask.npz")
         if os.path.exists(mask_path):
             load_existing_mask(mask_path, image_rgb)
         else:
@@ -97,7 +106,7 @@ def load_previous_image(event):
     current_image_idx = (current_image_idx - 1) % len(image_files)
     image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
     if image_rgb is not None and image_bgr is not None:
-        mask_path = os.path.join(SAVE_DIR, f"{os.path.splitext(image_files[current_image_idx])[0]}_mask.npy")
+        mask_path = os.path.join(SAVE_DIR, f"{os.path.splitext(image_files[current_image_idx])[0]}_mask.npz")
         if os.path.exists(mask_path):
             load_existing_mask(mask_path, image_rgb)
         else:
@@ -137,7 +146,7 @@ def refine_mask(event):
         overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
 
         # Update mask_info with the new mask
-        mask_info.append((len(mask_info), final_mask))
+        mask_info.append(final_mask)
 
         # Update the right image and remove red and blue dots
         ax[1].images[0].set_data(overlay)
@@ -164,15 +173,24 @@ def cancel_mask(event):
     global input_points, input_labels, all_points, all_labels, blue_points, blue_labels, initial_mask, overlay, mask_info
     if blue_points:
         bx, by = blue_points[0]
-        for i, (mask_idx, mask) in enumerate(mask_info):
+        for i, mask in enumerate(mask_info):
             if mask[by, bx]:
-                # Remove the specific mask from initial_mask
-                initial_mask[mask > 0.5] = 0
-                # Remove the mask info from the list
+                # 将要移除的遮罩的区域置零
+                initial_mask[mask > 0.5, :] = 0
                 mask_info.pop(i)
                 break
 
-        # Recreate the overlay after removing the mask
+        # 重新创建叠加图层
+        initial_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1], 4), dtype=np.uint8)
+        for j, mask in enumerate(mask_info):
+            color = get_color(j, len(mask_info))
+            colored_mask = np.zeros_like(image_rgb, dtype=np.uint8)
+            for k in range(3):
+                colored_mask[mask > 0.5, k] = color[k]
+            alpha_channel = (mask > 0.5).astype(np.uint8) * color[3]
+            colored_mask = np.dstack((colored_mask, alpha_channel))
+            initial_mask = np.maximum(initial_mask, colored_mask)
+
         overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
         ax[1].images[0].set_data(overlay)
         while ax[1].lines:
@@ -182,15 +200,15 @@ def cancel_mask(event):
         blue_labels = []
 
 def save(event):
-    global overlay, initial_mask
+    global overlay, initial_mask, mask_info
     save_name = os.path.splitext(image_files[current_image_idx])[0]
+    np.savez(os.path.join(SAVE_DIR, f"{save_name}_mask.npz"), *mask_info)
     cv2.imwrite(os.path.join(SAVE_DIR, f"{save_name}_segmented.png"), cv2.cvtColor(overlay, cv2.COLOR_RGBA2BGRA))
-    np.save(os.path.join(SAVE_DIR, f"{save_name}_mask.npy"), initial_mask)
 
 # Load and display the first image
 image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
 if image_rgb is not None and image_bgr is not None:
-    mask_path = os.path.join(SAVE_DIR, f"{os.path.splitext(image_files[current_image_idx])[0]}_mask.npy")
+    mask_path = os.path.join(SAVE_DIR, f"{os.path.splitext(image_files[current_image_idx])[0]}_mask.npz")
     if os.path.exists(mask_path):
         load_existing_mask(mask_path, image_rgb)
     else:
@@ -251,4 +269,3 @@ button_next.on_clicked(load_next_image)
 button_previous.on_clicked(load_previous_image)
 
 plt.show()
-
