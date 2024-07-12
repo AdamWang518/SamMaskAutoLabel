@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import cv2
 
 # Set the path to the saved .npy file
-file_path = "final_mask.npy"
+file_path = "D:\\SAMTEST\\output\\241_mask.npy"
 
 # Load the saved mask
 loaded_mask = np.load(file_path)
