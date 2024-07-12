@@ -55,6 +55,7 @@ def display_image(image_rgb, image_bgr, overlay, initialize=False):
 
 def generate_initial_masks(image_rgb):
     global initial_mask, overlay, mask_info
+    print("Generating initial masks")  # Debugging line
     sam_result = mask_generator.generate(image_rgb)
     initial_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1], 4), dtype=np.uint8)
 
@@ -71,9 +72,11 @@ def generate_initial_masks(image_rgb):
         mask_info.append(mask)
 
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
+    print("Initial masks generated")  # Debugging line
 
 def load_existing_mask(mask_path, image_rgb):
     global initial_mask, overlay, mask_info
+    print(f"Loading mask from: {mask_path}")  # Debugging line
     with np.load(mask_path) as data:
         mask_info = [data[key] for key in data]
     initial_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1], 4), dtype=np.uint8)
@@ -88,9 +91,10 @@ def load_existing_mask(mask_path, image_rgb):
         initial_mask = np.maximum(initial_mask, colored_mask)
     
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
+    print("Overlay created")  # Debugging line
 
 def load_next_image(event):
-    global current_image_idx, image_rgb, image_bgr
+    global current_image_idx, image_rgb, image_bgr, mask_info, initial_mask, overlay
     current_image_idx = (current_image_idx + 1) % len(image_files)
     image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
     if image_rgb is not None and image_bgr is not None:
@@ -99,10 +103,10 @@ def load_next_image(event):
             load_existing_mask(mask_path, image_rgb)
         else:
             generate_initial_masks(image_rgb)
-        display_image(image_rgb, image_bgr, overlay)
+        display_image(image_rgb, image_bgr, overlay, initialize=True)
 
 def load_previous_image(event):
-    global current_image_idx, image_rgb, image_bgr
+    global current_image_idx, image_rgb, image_bgr, mask_info, initial_mask, overlay
     current_image_idx = (current_image_idx - 1) % len(image_files)
     image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
     if image_rgb is not None and image_bgr is not None:
@@ -111,18 +115,14 @@ def load_previous_image(event):
             load_existing_mask(mask_path, image_rgb)
         else:
             generate_initial_masks(image_rgb)
-        display_image(image_rgb, image_bgr, overlay)
+        display_image(image_rgb, image_bgr, overlay, initialize=True)
 
 def refine_mask(event):
-    global input_points, input_labels, annotated_image, segmented_img_ax, initial_mask, all_points, all_labels, overlay, mask_info
+    global input_points, input_labels, initial_mask, overlay, mask_info, image_rgb
     if input_points:
-        all_points.extend(input_points)  # Add new points to all points
-        all_labels.extend(input_labels)  # Add new labels to all labels
-
-        input_points_np = np.array(all_points)
-        input_labels_np = np.array(all_labels)
+        print("Refining mask")  # Debugging line
         mask_predictor.set_image(image_rgb)
-        prediction = mask_predictor.predict(point_coords=input_points_np, point_labels=input_labels_np)
+        prediction = mask_predictor.predict(point_coords=np.array(input_points), point_labels=np.array(input_labels))
 
         # Check the structure of the returned prediction
         if len(prediction) == 3:
@@ -154,47 +154,51 @@ def refine_mask(event):
             ax[1].lines[0].remove()  # Clear the red and blue dots
         fig.canvas.draw()
 
-        # Clear input points for next refinement, but keep all_points and all_labels
+        # Clear input points for next refinement
         input_points = []
         input_labels = []
+        print("Mask refined")  # Debugging line
 
 def reset(event):
-    global input_points, input_labels, all_points, all_labels, blue_points, blue_labels, initial_mask, overlay, mask_info
+    global input_points, input_labels, blue_points, blue_labels, initial_mask, overlay, mask_info
+    print("Resetting masks")  # Debugging line
     input_points = []
     input_labels = []
-    all_points = []
-    all_labels = []
     blue_points = []
     blue_labels = []
     generate_initial_masks(image_rgb)
     display_image(image_rgb, image_bgr, overlay)
+    print("Masks reset")  # Debugging line
 
 def cancel_mask(event):
-    global input_points, input_labels, all_points, all_labels, blue_points, blue_labels, initial_mask, overlay, mask_info
+    global input_points, input_labels, blue_points, blue_labels, initial_mask, overlay, mask_info
     if blue_points:
         bx, by = blue_points[0]
         for i, mask in enumerate(mask_info):
             if mask[by, bx]:
+                print(f"Cancelling mask at {bx}, {by}")  # Debugging line
                 # Remove the mask from mask_info
                 mask_info.pop(i)
                 # Clear the mask region in initial_mask
                 initial_mask[mask > 0.5] = 0
                 break
 
-        # Update only the necessary parts of the overlay
-        updated_overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
-        ax[1].images[0].set_data(updated_overlay)
+        # Only update the necessary parts of the overlay
+        overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
+        ax[1].images[0].set_data(overlay)
         while ax[1].lines:
             ax[1].lines[0].remove()
         fig.canvas.draw()
         blue_points = []
         blue_labels = []
+        print("Mask cancelled")  # Debugging line
 
 def save(event):
     global overlay, initial_mask, mask_info
     save_name = os.path.splitext(image_files[current_image_idx])[0]
     np.savez(os.path.join(SAVE_DIR, f"{save_name}_mask.npz"), *mask_info)
     cv2.imwrite(os.path.join(SAVE_DIR, f"{save_name}_segmented.png"), cv2.cvtColor(overlay, cv2.COLOR_RGBA2BGRA))
+    print(f"Saved mask to: {os.path.join(SAVE_DIR, f'{save_name}_mask.npz')}")  # Debugging line
 
 # Load and display the first image
 image_rgb, image_bgr = load_image(os.path.join(IMAGE_DIR, image_files[current_image_idx]))
@@ -213,8 +217,6 @@ if image_rgb is not None and image_bgr is not None:
 # Collect points
 input_points = []
 input_labels = []
-all_points = []
-all_labels = []
 blue_points = []
 blue_labels = []
 
