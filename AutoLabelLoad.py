@@ -96,20 +96,24 @@ def load_existing_mask(mask_path, image_rgb):
 def update_overlay():
     global overlay, initial_mask, image_rgb
     overlay = cv2.addWeighted(image_rgb, 0.7, initial_mask[:, :, :3], 0.3, 0)
-    ax[1].images[0].set_data(overlay)
+    if ax[1].images:
+        ax[1].images[0].set_data(overlay)
+    else:
+        ax[1].imshow(overlay)
     while ax[1].lines:
         ax[1].lines[0].remove()
     fig.canvas.draw()
 
 def clear_all_data():
     global initial_mask, overlay, mask_info, input_points, input_labels, blue_points, blue_labels
-    initial_mask = None
-    overlay = None
+    initial_mask = np.zeros_like(initial_mask)
+    overlay = np.zeros_like(overlay)
     mask_info = []
     input_points = []
     input_labels = []
     blue_points = []
     blue_labels = []
+    ax[1].clear()
 
 def load_next_image(event):
     global current_image_idx, image_rgb, image_bgr, mask_info, initial_mask, overlay
@@ -136,6 +140,7 @@ def load_previous_image(event):
         else:
             generate_initial_masks(image_rgb)
         display_image(image_rgb, image_bgr, overlay, initialize=True)
+
 
 def refine_mask(event):
     global input_points, input_labels, initial_mask, overlay, mask_info, image_rgb
